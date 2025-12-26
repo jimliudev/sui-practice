@@ -1,5 +1,6 @@
 import { useCurrentAccount, useDisconnectWallet, useSuiClientQuery } from '@mysten/dapp-kit';
 import TransactionDemo from './TransactionDemo';
+import SponsoredTransactionDemo from './SponsoredTransactionDemo';
 
 export default function Dashboard() {
   const currentAccount = useCurrentAccount();
@@ -84,6 +85,9 @@ export default function Dashboard() {
 
         {/* 交易示範組件 */}
         <TransactionDemo />
+
+        {/* 贊助交易示範組件 */}
+        <SponsoredTransactionDemo />
       </div>
     </div>
   );
