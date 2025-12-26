@@ -58,3 +58,9 @@ npm run dev
 ## License
 
 MIT
+
+
+建立商店
+📋 交易摘要: AgdTvAMB6Gbm3Fo2j2fesaELbwDPNVM5KvJfRJjxfwvu
+🔑 KioskOwnerCap ID: 0xc267647062fd769a3a6c2f478ba4dbc8a6cd1636ecf7859adf52cc663f9dabd1
+🏪 Kiosk ID: 0xfed50b00e33c1e3c49320c70ca34a7aa1ee6b8f2e3c6e8b69ef2cfbc0099f252

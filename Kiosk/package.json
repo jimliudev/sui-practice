@@ -1,0 +1,26 @@
+{
+  "name": "sui-kiosk-example",
+  "version": "1.0.0",
+  "description": "Sui Kiosk TypeScript 範例",
+  "type": "module",
+  "scripts": {
+    "create-kiosk": "npx tsx src/createKiosk.ts",
+    "query-kiosk": "npx tsx src/queryKiosk.ts",
+    "place-item": "npx tsx src/placeItem.ts",
+    "list-item": "npx tsx src/listItem.ts",
+    "list-existing": "npx tsx src/listExistingItem.ts",
+    "purchase-item": "npx tsx src/purchaseItem.ts",
+    "withdraw-profits": "npx tsx src/withdrawProfits.ts",
+    "demo": "npx tsx src/demo.ts"
+  },
+  "dependencies": {
+    "@mysten/kiosk": "^0.10.0",
+    "@mysten/sui": "1.22.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0"
+  }
+}
