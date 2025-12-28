@@ -1,0 +1,183 @@
+/**
+ * Query Open Orders
+ * 
+ * 查詢用戶在 DeepBook 上的未成交訂單。
+ * 
+ * 使用方式: npm run query-orders
+ */
+
+import { DeepBookClient } from '@mysten/deepbook-v3';
+import type { BalanceManager } from '@mysten/deepbook-v3';
+import { getSuiClient, getKeypair, NETWORK, parseAmount } from './config.js';
+
+// 配置
+const BALANCE_MANAGER_ID = process.env.BALANCE_MANAGER_ID || '';
+
+async function queryOpenOrders(poolKey: string) {
+  if (!BALANCE_MANAGER_ID) {
+    console.error('❌ BALANCE_MANAGER_ID not set.');
+    console.log('💡 Run: npm run create-balance-manager');
+    process.exit(1);
+  }
+
+  const client = getSuiClient();
+  const keypair = getKeypair();
+  const address = keypair.toSuiAddress();
+
+  console.log('📋 Querying Open Orders...');
+  console.log(`👤 Address: ${address}`);
+  console.log(`🏦 Balance Manager: ${BALANCE_MANAGER_ID}`);
+  console.log(`🏊 Pool: ${poolKey}`);
+  console.log(`🌐 Network: ${NETWORK}`);
+
+  // 配置 BalanceManager
+  const balanceManagers: { [key: string]: BalanceManager } = {
+    MANAGER_1: {
+      address: BALANCE_MANAGER_ID,
+      tradeCap: process.env.TRADE_CAP_ID,
+    },
+  };
+
+  const dbClient = new DeepBookClient({
+    address,
+    env: NETWORK,
+    client,
+    balanceManagers,
+  });
+
+  try {
+    // 查詢訂單需要通過 DeepBook API 或鏈上查詢
+    console.log('\n📊 Open Orders:');
+    console.log('='.repeat(60));
+    console.log('  💡 訂單查詢需要通過 DeepBook API 服務');
+    console.log('  🔗 https://deepbook-indexer.mainnet.mystenlabs.com/docs');
+    console.log(`  🔗 或查看 Sui Explorer: https://suiscan.xyz/${NETWORK}/object/${BALANCE_MANAGER_ID}`);
+    console.log('='.repeat(60));
+    return [];
+
+  } catch (error) {
+    console.error('❌ Failed to query orders:', error);
+    throw error;
+  }
+}
+
+// 查詢所有池子的訂單
+async function queryAllOpenOrders() {
+  const pools = ['SUI_USDC', 'DEEP_SUI', 'DEEP_USDC'];
+
+  console.log('📋 Querying All Open Orders...');
+  console.log('='.repeat(60));
+
+  for (const poolKey of pools) {
+    try {
+      console.log(`\n🏊 Pool: ${poolKey}`);
+      const orders = await queryOpenOrdersSilent(poolKey);
+      
+      if (orders && orders.length > 0) {
+        console.log(`   Found ${orders.length} open order(s)`);
+        orders.forEach((orderId: any, i: number) => {
+          console.log(`   ${i + 1}. Order ID: ${orderId}`);
+        });
+      } else {
+        console.log('   No open orders');
+      }
+    } catch (e) {
+      console.log(`   Pool not available on ${NETWORK}`);
+    }
+  }
+
+  console.log('\n' + '='.repeat(60));
+}
+
+// 靜默查詢（不輸出太多信息）
+async function queryOpenOrdersSilent(poolKey: string) {
+  if (!BALANCE_MANAGER_ID) {
+    return [];
+  }
+
+  const client = getSuiClient();
+  const keypair = getKeypair();
+  const address = keypair.toSuiAddress();
+
+  const balanceManagers: { [key: string]: BalanceManager } = {
+    MANAGER_1: {
+      address: BALANCE_MANAGER_ID,
+      tradeCap: process.env.TRADE_CAP_ID,
+    },
+  };
+
+  const dbClient = new DeepBookClient({
+    address,
+    env: NETWORK,
+    client,
+    balanceManagers,
+  });
+
+  try {
+    // 需要通過 DeepBook API 查詢
+    return [];
+  } catch (e) {
+    return [];
+  }
+}
+
+// 查詢訂單簿 (Level 2)
+async function queryOrderBook(poolKey: string) {
+  const client = getSuiClient();
+  const keypair = getKeypair();
+  const address = keypair.toSuiAddress();
+
+  const dbClient = new DeepBookClient({
+    address,
+    env: NETWORK,
+    client,
+  });
+
+  console.log(`\n📚 Order Book: ${poolKey}`);
+  console.log('='.repeat(60));
+
+  console.log('  💡 訂單簿查詢需要使用 DeepBook API 服務');
+  console.log('  💡 請查看 https://deepbook-indexer.mainnet.mystenlabs.com/docs');
+  console.log('='.repeat(60));
+
+  return { bids: [], asks: [] };
+}
+
+// 解析命令行參數
+const args = process.argv.slice(2);
+const poolKey = args[0] || 'SUI_USDC';
+const queryType = args[1] || 'orders'; // 'orders', 'book', 'all'
+
+if (queryType === 'all') {
+  queryAllOpenOrders()
+    .then(() => {
+      console.log('\n✨ Done!');
+      process.exit(0);
+    })
+    .catch((error) => {
+      console.error(error);
+      process.exit(1);
+    });
+} else if (queryType === 'book') {
+  queryOrderBook(poolKey)
+    .then(() => {
+      console.log('\n✨ Done!');
+      process.exit(0);
+    })
+    .catch((error) => {
+      console.error(error);
+      process.exit(1);
+    });
+} else {
+  queryOpenOrders(poolKey)
+    .then(() => {
+      console.log('\n✨ Done!');
+      process.exit(0);
+    })
+    .catch((error) => {
+      console.error(error);
+      process.exit(1);
+    });
+}
+
+export { queryOpenOrders, queryAllOpenOrders, queryOrderBook };

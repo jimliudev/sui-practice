@@ -1,0 +1,30 @@
+{
+  "name": "deepbook-demo",
+  "version": "1.0.0",
+  "description": "DeepBook V3 trading demo - create pools, place orders, and trade",
+  "type": "module",
+  "scripts": {
+    "create-balance-manager": "npx tsx src/createBalanceManager.ts",
+    "create-pool": "npx tsx src/createPool.ts",
+    "deposit": "npx tsx src/deposit.ts",
+    "get-deep": "npx tsx src/getDeep.ts",
+    "query-pools": "npx tsx src/queryPools.ts",
+    "query-balance": "npx tsx src/queryBalance.ts",
+    "place-limit-order": "npx tsx src/placeLimitOrder.ts",
+    "place-market-order": "npx tsx src/placeMarketOrder.ts",
+    "cancel-order": "npx tsx src/cancelOrder.ts",
+    "query-orders": "npx tsx src/queryOrders.ts",
+    "swap": "npx tsx src/swap.ts",
+    "demo": "npx tsx src/demo.ts"
+  },
+  "dependencies": {
+    "@mysten/deepbook-v3": "^0.24.0",
+    "@mysten/sui": "^1.0.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0"
+  }
+}
