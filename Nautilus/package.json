@@ -1,0 +1,30 @@
+{
+    "name": "nautilus-ts-client",
+    "version": "0.1.0",
+    "description": "Basic TypeScript client for Nautilus - Verifiable offchain computation on Sui",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "scripts": {
+        "build": "tsc",
+        "dev": "ts-node examples/basic-usage.ts",
+        "example": "ts-node examples/basic-usage.ts"
+    },
+    "keywords": [
+        "nautilus",
+        "sui",
+        "blockchain",
+        "tee",
+        "attestation",
+        "aws-nitro"
+    ],
+    "author": "",
+    "license": "Apache-2.0",
+    "dependencies": {
+        "@mysten/sui": "^1.14.0"
+    },
+    "devDependencies": {
+        "@types/node": "^20.10.0",
+        "ts-node": "^10.9.2",
+        "typescript": "^5.3.3"
+    }
+}
