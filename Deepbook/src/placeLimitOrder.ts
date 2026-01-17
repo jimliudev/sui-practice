@@ -53,7 +53,7 @@ async function placeLimitOrder(params: PlaceLimitOrderParams) {
     quantity,
     isBid,
     orderType = ORDER_TYPES.NO_RESTRICTION,
-    payWithDeep = true,
+    payWithDeep = false,  // 改為 false，用 SUI 支付手續費
     clientOrderId = Date.now().toString(),
   } = params;
 
@@ -79,11 +79,46 @@ async function placeLimitOrder(params: PlaceLimitOrderParams) {
     },
   };
 
+  // 自定義代幣配置
+  const customCoins = {
+    DEEP: {
+      address: '0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8',
+      type: '0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8::deep::DEEP',
+      scalar: 1e6,
+    },
+    SUI: {
+      address: '0x0000000000000000000000000000000000000000000000000000000000000002',
+      type: '0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI',
+      scalar: 1e9,
+    },
+    DBUSDC: {
+      address: '0xf7152c05930480cd740d7311b5b8b45c6f488e3a53a11c3f74a6fac36a52e0d7',
+      type: '0xf7152c05930480cd740d7311b5b8b45c6f488e3a53a11c3f74a6fac36a52e0d7::DBUSDC::DBUSDC',
+      scalar: 1e6,
+    },
+    TEST01_COIN: {
+      address: '0xc141f2d7399f14a7c0334fdf655f8e7d4176e21331da9187a5ff20d20737fb39',
+      type: '0xc141f2d7399f14a7c0334fdf655f8e7d4176e21331da9187a5ff20d20737fb39::test01_coin::TEST01_COIN',
+      scalar: 1e9,
+    },
+  };
+
+  // 自定義池子配置
+  const customPools = {
+    TEST01_COIN_DBUSDC: {
+      address: '0x9c73295c437151ee5ded33df815faebd1e7b13d794af60feda201a226ad680d6',
+      baseCoin: 'TEST01_COIN',
+      quoteCoin: 'DBUSDC',
+    },
+  };
+
   const dbClient = new DeepBookClient({
     address,
     env: NETWORK,
     client,
     balanceManagers,
+    coins: customCoins,
+    pools: customPools,
   });
 
   const tx = new Transaction();
@@ -183,7 +218,7 @@ async function exampleSellOrder() {
 // 解析命令行參數
 function parseArgs() {
   const args = process.argv.slice(2);
-  
+
   if (args.length === 0) {
     return null; // 使用範例
   }
@@ -220,7 +255,7 @@ if (parsedParams) {
   // 運行範例
   console.log('📖 No parameters provided. Running example...');
   console.log('💡 Usage: npm run place-limit-order -- --pool SUI_USDC --price 1.5 --quantity 1 --side buy');
-  
+
   exampleBuyOrder()
     .then(() => {
       console.log('\n✨ Done!');

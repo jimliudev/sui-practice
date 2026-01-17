@@ -29,6 +29,7 @@ async function queryPools() {
     'DEEP_SUI',
     'DEEP_USDC',
     'SUI_DBUSDC',
+    'TEST01_COIN_DBUSDC'
   ];
 
   console.log('\n📊 Available Pools:');
@@ -65,22 +66,73 @@ async function getPoolInfo(dbClient: DeepBookClient, poolKey: string) {
 }
 
 // 查詢特定池子的詳細信息
-async function queryPoolDetails(poolKey: string) {
+async function queryPoolDetails(poolKeyOrId: string) {
   const client = getSuiClient();
   const keypair = getKeypair();
   const address = keypair.toSuiAddress();
 
-  const dbClient = new DeepBookClient({
-    address,
-    env: NETWORK,
-    client,
-  });
-
-  console.log(`\n🔍 Querying Pool Details: ${poolKey}`);
+  console.log(`\n🔍 Querying Pool Details: ${poolKeyOrId}`);
   console.log('='.repeat(60));
 
-  console.log('  💡 訂單簿詳細信息請使用 DeepBook API 服務');
-  console.log('  🔗 https://deepbook-indexer.mainnet.mystenlabs.com/docs');
+  try {
+    // 如果輸入看起來像 Pool ID (0x開頭)，直接查詢對象
+    if (poolKeyOrId.startsWith('0x')) {
+      console.log('\n📋 Querying by Pool ID...');
+      const poolObject = await client.getObject({
+        id: poolKeyOrId,
+        options: {
+          showContent: true,
+          showType: true,
+        },
+      });
+
+      if (poolObject.data) {
+        console.log('\n✅ Pool Found!');
+        console.log(`🆔 Pool ID: ${poolObject.data.objectId}`);
+        console.log(`📦 Type: ${poolObject.data.type}`);
+
+        if (poolObject.data.content && 'fields' in poolObject.data.content) {
+          const fields = poolObject.data.content.fields as any;
+          console.log('\n📊 Pool Configuration:');
+
+          // 顯示池子配置
+          if (fields.tick_size) {
+            console.log(`  Tick Size: ${fields.tick_size}`);
+          }
+          if (fields.lot_size) {
+            console.log(`  Lot Size: ${fields.lot_size}`);
+          }
+          if (fields.min_size) {
+            console.log(`  Min Size: ${fields.min_size}`);
+          }
+          if (fields.taker_fee) {
+            console.log(`  Taker Fee: ${fields.taker_fee}`);
+          }
+          if (fields.maker_fee) {
+            console.log(`  Maker Fee: ${fields.maker_fee}`);
+          }
+        }
+      } else {
+        console.log('❌ Pool not found');
+      }
+    } else {
+      // 如果是 Pool Key，需要通過 Registry 查詢
+      console.log('\n� Pool Key provided. To query by key, you need the Pool ID.');
+      console.log('💡 You can find the Pool ID from the create-pool output.');
+      console.log('\n📝 Your created pools:');
+      console.log('  TEST01_COIN_DBUSDC Pool ID: 0x9c73295c437151ee5ded33df815faebd1e7b13d794af60feda201a226ad680d6');
+      console.log('\n💡 Usage: npm run query-pools -- 0x9c73295c437151ee5ded33df815faebd1e7b13d794af60feda201a226ad680d6');
+    }
+
+    // 查詢訂單簿深度
+    console.log('\n📊 Order Book Information:');
+    console.log('  💡 To view order book depth, use:');
+    console.log('     npm run query-orders -- ' + poolKeyOrId + ' book');
+
+  } catch (error: any) {
+    console.error('❌ Error querying pool:', error.message);
+    console.log('\n💡 Make sure you are using the correct Pool ID from the create-pool output.');
+  }
 }
 
 // 獲取池子的中間價格

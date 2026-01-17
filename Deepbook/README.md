@@ -250,3 +250,79 @@ const result = await client.signAndExecuteTransaction({
 3. **滑點保護**: 市價單和 swap 時設置合理的 minOut
 4. **Gas 費用**: 確保錢包有足夠的 SUI 支付 gas
 5. **DEEP 代幣**: 建議持有一些 DEEP 代幣來支付交易費用
+
+
+# 117
+npm run create-pool -- \
+  --base TEST01_COIN \
+  --quote DBUSDC \
+  --customCoin "0xc141f2d7399f14a7c0334fdf655f8e7d4176e21331da9187a5ff20d20737fb39::test01_coin::TEST01_COIN::9" \
+  --tickSize 0.001 \
+  --lotSize 0.1 \
+  --minSize 1
+
+  ### sucess
+
+  ```text
+  Network: testnet
+🔗 RPC URL: https://fullnode.testnet.sui.io:443
+
+📝 Registering custom coin: TEST01_COIN
+🏊 Creating DeepBook Pool (Permissionless)...
+👤 Address: 0x3f58a419f88a0b054daebff43c2a759a7a390a6f749cfc991793134cf6a89e21
+🌐 Network: testnet
+
+📋 Pool Configuration:
+  Base Coin Key: TEST01_COIN
+  Quote Coin Key: DBUSDC
+  Tick Size: 0.001
+  Lot Size: 0.1
+  Min Size: 1
+
+📋 Custom Coins:
+  TEST01_COIN: 0xc141f2d7399f14a7c0334fdf655f8e7d4176e21331da9187a5ff20d20737fb39::test01_coin::TEST01_COIN (scalar: 1000000000)
+
+✅ Pool created successfully!
+📋 Digest: Bwy3TH4qGbAeQHcAiTEPc1ovZ9sGDj787cB7ecq2AuwV
+
+🆔 Pool ID: 0x8bbff3e5b9e2124bf3e482a6b486636b923ab1c228e9b571de0b3f4d914c0e29
+
+🆔 Pool ID: 0x9c73295c437151ee5ded33df815faebd1e7b13d794af60feda201a226ad680d6
+
+🆔 Pool ID: 0xfdd1f7b3ec77740cb4ab48fd89a93c61b73641360a1796dc8859a4dd8c39c714
+
+📦 Created Objects:
+  - 0x2::coin::Coin<0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8::deep::DEEP>: 0x0a1693ec94e64ce4d7691f027f124dba08b0ba6d76a0d27e0bcd76eaac2aec2c
+  - 0x2::dynamic_field::Field<0xfb28c4cbc6865bd1c897d26aecbe1f8792d1509a20ffec692c800660cbec6982::registry::PoolKey, 0x2::object::ID>: 0x8bbff3e5b9e2124bf3e482a6b486636b923ab1c228e9b571de0b3f4d914c0e29
+  - 0xfb28c4cbc6865bd1c897d26aecbe1f8792d1509a20ffec692c800660cbec6982::pool::Pool<0xc141f2d7399f14a7c0334fdf655f8e7d4176e21331da9187a5ff20d20737fb39::test01_coin::TEST01_COIN, 0xf7152c05930480cd740d7311b5b8b45c6f488e3a53a11c3f74a6fac36a52e0d7::DBUSDC::DBUSDC>: 0x9c73295c437151ee5ded33df815faebd1e7b13d794af60feda201a226ad680d6
+  - 0x2::dynamic_field::Field<u64, 0xfb28c4cbc6865bd1c897d26aecbe1f8792d1509a20ffec692c800660cbec6982::history::Volumes>: 0xc27a443139b7747b5e2b540cdd313ec5a046f92b4b07aed14b443f513ed02c4f
+  - 0x2::dynamic_field::Field<u64, 0xfb28c4cbc6865bd1c897d26aecbe1f8792d1509a20ffec692c800660cbec6982::pool::PoolInner<0xc141f2d7399f14a7c0334fdf655f8e7d4176e21331da9187a5ff20d20737fb39::test01_coin::TEST01_COIN, 0xf7152c05930480cd740d7311b5b8b45c6f488e3a53a11c3f74a6fac36a52e0d7::DBUSDC::DBUSDC>>: 0xfdd1f7b3ec77740cb4ab48fd89a93c61b73641360a1796dc8859a4dd8c39c714
+
+✨ Done!
+  ```
+
+查詢特定pool
+  npm run query-pools -- 0x9c73295c437151ee5ded33df815faebd1e7b13d794af60feda201a226ad680d6
+
+增加流通性
+  npm run deposit -- --coin TEST01_COIN --amount 100
+
+sui - bdusd
+  npm run swap -- \
+  --pool SUI_DBUSDC \
+  --amount 10 \
+  --direction base-to-quote
+
+
+  # 更多賣單
+npm run place-limit-order -- --pool TEST01_COIN_DBUSDC --price 2.0 --quantity 20 --side sell
+npm run place-limit-order -- --pool TEST01_COIN_DBUSDC --price 1.8 --quantity 15 --side sell
+
+# 買單（需要 DBUSDC）
+npm run place-limit-order -- --pool TEST01_COIN_DBUSDC --price 1.6 --quantity 2 --side buy
+
+
+# 訂單
+npm run query-orders -- TEST01_COIN_DBUSDC book
+
+npx tsx src/queryOpenOrdersSDK.ts
