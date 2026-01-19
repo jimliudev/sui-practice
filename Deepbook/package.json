@@ -7,6 +7,7 @@
     "create-balance-manager": "npx tsx src/createBalanceManager.ts",
     "create-pool": "npx tsx src/createPool.ts",
     "deposit": "npx tsx src/deposit.ts",
+    "withdraw": "npx tsx src/withdraw.ts",
     "get-deep": "npx tsx src/getDeep.ts",
     "query-pools": "npx tsx src/queryPools.ts",
     "query-balance": "npx tsx src/queryBalance.ts",

@@ -315,7 +315,7 @@ sui - bdusd
 
 
   # 更多賣單
-npm run place-limit-order -- --pool TEST01_COIN_DBUSDC --price 2.0 --quantity 20 --side sell
+npm run place-limit-order -- --pool TEST01_COIN_DBUSDC --price 1.5 --quantity 5 --side sell
 npm run place-limit-order -- --pool TEST01_COIN_DBUSDC --price 1.8 --quantity 15 --side sell
 
 # 買單（需要 DBUSDC）
@@ -326,3 +326,14 @@ npm run place-limit-order -- --pool TEST01_COIN_DBUSDC --price 1.6 --quantity 2 
 npm run query-orders -- TEST01_COIN_DBUSDC book
 
 npx tsx src/queryOpenOrdersSDK.ts
+npx tsx src/queryRecentTx.ts
+
+# 領錢出來
+# 查看使用說明
+npm run withdraw
+# 提取 DBUSDC
+npm run withdraw -- --coin DBUSDC --amount 10
+# 提取 TEST01_COIN
+npm run withdraw -- --coin TEST01_COIN --amount 50
+# 提取 SUI
+npm run withdraw -- --coin SUI --amount 5
