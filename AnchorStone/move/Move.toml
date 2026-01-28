@@ -1,0 +1,6 @@
+[package]
+name = "anchorstone"
+edition = "2024.beta"
+
+[addresses]
+anchorstone = "0x0"
