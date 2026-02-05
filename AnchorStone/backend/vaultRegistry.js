@@ -29,21 +29,27 @@ class VaultRegistry {
      * @param {string} poolId - DeepBook Pool ID
      * @param {object} vaultInfo - Vault 資訊
      * @param {string} vaultInfo.vaultId - Vault ID
-     * @param {string} vaultInfo.balanceManagerId - Balance Manager ID
+     * @param {string} vaultInfo.balanceManagerId - Balance Manager ID (可選，但回購需要)
      * @param {string} vaultInfo.coinType - Token 類型
      * @param {number} vaultInfo.floorPrice - 最低價格 (USDC, 6 decimals)
+     * @param {number} vaultInfo.minBuybackAmount - 最低回購金額 (USDC)
      * @param {string} vaultInfo.owner - Vault owner 地址
      */
     registerPool(poolId, vaultInfo) {
-        const { vaultId, balanceManagerId, coinType, floorPrice, owner } = vaultInfo;
+        const { vaultId, balanceManagerId, coinType, floorPrice, minBuybackAmount, owner } = vaultInfo;
+
+        if (!vaultId) {
+            throw new Error('vaultId is required for pool registration');
+        }
 
         const entry = {
             vaultId,
             poolId,
-            balanceManagerId,
-            coinType,
-            floorPrice,
-            owner,
+            balanceManagerId: balanceManagerId || null,
+            coinType: coinType || null,
+            floorPrice: floorPrice || 1_000_000, // 預設 1 USDC
+            minBuybackAmount: minBuybackAmount !== undefined ? minBuybackAmount : null, // 最低回購金額
+            owner: owner || null,
             lastTradePrice: 0,
             buybackCount: 0,
             totalBuybackAmount: 0,
@@ -53,8 +59,37 @@ class VaultRegistry {
         this.poolToVault.set(poolId, entry);
         this.vaultToPool.set(vaultId, entry);
 
-        console.log(`📝 Registered Pool ${poolId.substring(0, 16)}... -> Vault ${vaultId.substring(0, 16)}...`);
-        console.log(`   Floor Price: ${floorPrice / 1_000_000} USDC`);
+        const floorPriceDisplay = ((entry.floorPrice || 0) / 1_000_000).toFixed(6);
+        console.log(`\n📝 [VaultRegistry] Pool Registered`);
+        console.log(`   Pool ID: ${poolId.substring(0, 20)}...`);
+        console.log(`   Vault ID: ${vaultId.substring(0, 20)}...`);
+        
+        if (balanceManagerId) {
+            console.log(`   💼 Balance Manager: ${balanceManagerId.substring(0, 20)}... ✅`);
+        } else {
+            console.log(`   💼 Balance Manager: NOT PROVIDED ⚠️`);
+            console.log(`   ⚠️  Warning: Without Balance Manager, buyback cannot be executed!`);
+        }
+        
+        if (coinType) {
+            console.log(`   🪙 Coin Type: ${coinType.split('::').pop()}`);
+        } else {
+            console.log(`   🪙 Coin Type: Not specified`);
+        }
+        
+        if (owner) {
+            console.log(`   👤 Owner: ${owner.substring(0, 20)}...`);
+        }
+        
+        console.log(`   🛡️  Floor Price: ${floorPriceDisplay} USDC`);
+        
+        if (entry.minBuybackAmount !== null && entry.minBuybackAmount !== undefined) {
+            console.log(`   💰 Min Buyback: ${entry.minBuybackAmount} USDC`);
+        } else {
+            console.log(`   💰 Min Buyback: Not set (will use global or 0)`);
+        }
+        
+        console.log(`   💡 Will ${balanceManagerId ? 'trigger' : 'detect (but cannot execute)'} buyback when price < ${floorPriceDisplay} USDC\n`);
 
         return entry;
     }

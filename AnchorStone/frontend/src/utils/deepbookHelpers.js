@@ -140,7 +140,11 @@ export function extractObjectId(result, objectTypePattern) {
  * @returns {string} Order ID
  */
 export function generateOrderId() {
-    return Date.now().toString()
+    // 結合時間戳和隨機數，確保唯一性
+    // 避免在同一毫秒內產生重複的 Order ID
+    const timestamp = Date.now()
+    const random = Math.floor(Math.random() * 1000000)
+    return `${timestamp}${random}`
 }
 
 /**

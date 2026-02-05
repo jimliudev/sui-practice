@@ -19,6 +19,11 @@ const NETWORK = 'testnet'; // or 'mainnet'
 const MAIN_PACKAGE_ID = process.env.MAIN_PACKAGE_ID || ''; // Your main contract package ID
 const TOKEN_REGISTRY_ID = process.env.TOKEN_REGISTRY_ID || ''; // TokenRegistry shared object ID
 
+// Reserve Coin Type for RwaVault (儲備金類型)
+// RwaVault<T, FRAC> 中的 T 是儲備金類型（例如 USDC）
+// 在 AnchorStone 中，我們使用 DBUSDC 作為儲備金和交易報價貨幣
+const RESERVE_COIN_TYPE = '0xf7152c05930480cd740d7311b5b8b45c6f488e3a53a11c3f74a6fac36a52e0d7::DBUSDC::DBUSDC';
+
 // Initialize Sui client
 const client = new SuiClient({ url: getFullnodeUrl(NETWORK) });
 
@@ -44,11 +49,27 @@ function loadKeypair() {
 }
 
 /**
- * Generate a unique module name and struct name for the property token
+ * Generate module name and struct name for the property token
+ * 
+ * IMPORTANT: structName MUST be the uppercase version of moduleName
+ * to satisfy Sui's One-Time Witness (OTW) requirement
  */
-function generateTokenIdentifiers(propertyId) {
+function generateTokenIdentifiers(propertyId, customSymbol = null) {
     const timestamp = Date.now();
-    const moduleName = `property_token_${propertyId}_${timestamp}`;
+    
+    // If customSymbol is provided, use it directly as the module name
+    if (customSymbol) {
+        const cleanSymbol = customSymbol.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const moduleName = cleanSymbol;
+        // IMPORTANT: structName must be uppercase version of moduleName for OTW
+        const structName = moduleName.toUpperCase();
+        return { moduleName, structName, timestamp };
+    }
+    
+    // Otherwise, generate from property name
+    // Use a short random identifier as fallback
+    const randomId = Math.floor(Math.random() * 0xFFFF).toString(16).padStart(4, '0');
+    const moduleName = `token_${randomId}`;
     const structName = moduleName.toUpperCase();
     return { moduleName, structName, timestamp };
 }
@@ -57,17 +78,19 @@ function generateTokenIdentifiers(propertyId) {
  * Generate Move contract from template
  */
 export function generateTokenContract(propertyData) {
-    const { moduleName, structName } = generateTokenIdentifiers(propertyData.id);
+    // Generate token symbol (max 10 chars, uppercase)
+    // Use custom symbol if provided, otherwise derive from name
+    const symbol = propertyData.symbol || 
+        propertyData.name
+            .replace(/[^a-zA-Z0-9]/g, '')
+            .toUpperCase()
+            .substring(0, 10);
+
+    const { moduleName, structName } = generateTokenIdentifiers(propertyData.id, symbol);
 
     // Read template
     const templatePath = path.join(__dirname, 'templates', 'property_token_template.move');
     let template = fs.readFileSync(templatePath, 'utf-8');
-
-    // Generate token symbol (max 10 chars, uppercase)
-    const symbol = propertyData.name
-        .replace(/[^a-zA-Z0-9]/g, '')
-        .toUpperCase()
-        .substring(0, 10);
 
     // Replace placeholders
     template = template
@@ -296,11 +319,12 @@ async function createVault(nftId, treasuryCapId, tokenType, reserveCoinId, total
 
     const tx = new Transaction();
 
+    // typeArguments: [T, FRAC] 其中 T 是儲備金類型（DBUSDC），FRAC 是分數代幣類型
     tx.moveCall({
         target: `${MAIN_PACKAGE_ID}::rwa_vault::create_vault_entry`,
         typeArguments: [
-            '0x2::sui::SUI', // Reserve coin type (using SUI for testing)
-            tokenType        // The deployed property token type
+            RESERVE_COIN_TYPE, // Reserve coin type (DBUSDC for mainnet/testnet)
+            tokenType          // The deployed property token type
         ],
         arguments: [
             tx.object(nftId),
@@ -336,36 +360,36 @@ async function createVault(nftId, treasuryCapId, tokenType, reserveCoinId, total
 }
 
 /**
- * Split SUI coin to use as reserve
+ * Get DBUSDC coin from user wallet to use as reserve
+ * Note: The user must have DBUSDC in their wallet
  */
 export async function prepareReserveCoin(amount, keypair) {
-    console.log(`\n💰 Preparing reserve coin (${amount} MIST)...`);
+    console.log(`\n💰 Preparing reserve coin (${amount / 1_000_000} USDC)...`);
 
-    const tx = new Transaction();
-    const [coin] = tx.splitCoins(tx.gas, [amount]);
-    tx.transferObjects([coin], keypair.getPublicKey().toSuiAddress());
+    const address = keypair.getPublicKey().toSuiAddress();
 
-    const result = await client.signAndExecuteTransaction({
-        transaction: tx,
-        signer: keypair,
-        options: {
-            showEffects: true,
-            showObjectChanges: true
-        }
+    // Get DBUSDC coins from wallet
+    const coins = await client.getCoins({
+        owner: address,
+        coinType: RESERVE_COIN_TYPE
     });
 
-    // Extract the new coin ID
-    const coinId = result.objectChanges?.find(
-        change => change.type === 'created' &&
-            change.objectType === '0x2::coin::Coin<0x2::sui::SUI>'
-    )?.objectId;
-
-    if (!coinId) {
-        throw new Error('Failed to create reserve coin');
+    if (!coins.data || coins.data.length === 0) {
+        throw new Error('No DBUSDC coins found in wallet. Please get some DBUSDC first.');
     }
+
+    const totalBalance = coins.data.reduce((sum, coin) => sum + BigInt(coin.balance), 0n);
+    
+    if (totalBalance < BigInt(amount)) {
+        throw new Error(`Insufficient DBUSDC balance. Required: ${amount / 1_000_000} USDC, Available: ${Number(totalBalance) / 1_000_000} USDC`);
+    }
+
+    // Use the first coin (or merge if needed)
+    const coinId = coins.data[0].coinObjectId;
 
     console.log('✅ Reserve coin prepared!');
     console.log(`   Coin ID: ${coinId}`);
+    console.log(`   Amount: ${Number(coins.data[0].balance) / 1_000_000} USDC`);
 
     return coinId;
 }

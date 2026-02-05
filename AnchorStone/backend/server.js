@@ -574,7 +574,7 @@ const PORT = process.env.PORT || 3000;
  */
 app.post('/api/vaults/register-pool', async (req, res) => {
     try {
-        const { vaultId, poolId, balanceManagerId, coinType, floorPrice, owner } = req.body;
+        const { vaultId, poolId, balanceManagerId, coinType, floorPrice, minBuybackAmount, owner } = req.body;
 
         if (!vaultId || !poolId) {
             return res.status(400).json({
@@ -584,25 +584,456 @@ app.post('/api/vaults/register-pool', async (req, res) => {
 
         // 轉換 floorPrice 到 6 位小數
         const floorPriceRaw = Math.floor(parseFloat(floorPrice || 1) * 1_000_000);
+        const floorPriceDisplay = (floorPriceRaw / 1_000_000).toFixed(6);
+
+        console.log('\n🏊 ====== Registering DeepBook Pool ======');
+        console.log(`📋 Pool ID: ${poolId}`);
+        console.log(`🏦 Vault ID: ${vaultId}`);
+        console.log(`💼 Balance Manager ID: ${balanceManagerId || 'N/A'}`);
+        console.log(`🪙 Coin Type: ${coinType || 'N/A'}`);
+        console.log(`🛡️  Floor Price: ${floorPriceDisplay} USDC (Raw: ${floorPriceRaw})`);
+        console.log(`💰 Min Buyback Amount: ${minBuybackAmount !== undefined ? minBuybackAmount + ' USDC' : 'Not set'}`);
+        console.log(`👤 Owner: ${owner || 'N/A'}`);
+        console.log('========================================\n');
 
         const entry = vaultRegistry.registerPool(poolId, {
             vaultId,
             balanceManagerId,
             coinType,
             floorPrice: floorPriceRaw,
+            minBuybackAmount: minBuybackAmount !== undefined ? parseFloat(minBuybackAmount) : undefined,
             owner,
         });
+
+        console.log('✅ Pool registered successfully!');
+        console.log(`   Monitoring price for automatic buyback when below ${floorPriceDisplay} USDC`);
+        console.log(`\n📊 Registered Information:`);
+        console.log(`   Vault ID: ${entry.vaultId}`);
+        console.log(`   Balance Manager ID: ${entry.balanceManagerId || 'Not provided'}`);
+        console.log(`   Coin Type: ${entry.coinType || 'Not provided'}`);
+        console.log(`   Owner: ${entry.owner || 'Not provided'}`);
+        console.log(`   Registered At: ${entry.registeredAt}\n`);
 
         res.json({
             success: true,
             message: 'Pool registered successfully',
-            data: entry,
+            data: {
+                poolId: entry.poolId,
+                vaultId: entry.vaultId,
+                balanceManagerId: entry.balanceManagerId,
+                coinType: entry.coinType,
+                floorPrice: floorPriceRaw,
+                floorPriceDisplay: floorPriceDisplay,
+                owner: entry.owner,
+                registeredAt: entry.registeredAt,
+            },
         });
 
     } catch (error) {
         console.error('Error registering pool:', error);
         res.status(500).json({
             error: 'Failed to register pool',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * API: Record Order (called by frontend after placing order)
+ */
+app.post('/api/orders/record', async (req, res) => {
+    try {
+        const { orderId, poolId, price, quantity, isBid } = req.body;
+
+        if (!orderId || !poolId || !price) {
+            return res.status(400).json({
+                error: 'Missing required fields: orderId, poolId, price'
+            });
+        }
+
+        // 記錄訂單到 DeepBook Listener 的緩存
+        const result = deepBookListener.recordOrder({
+            orderId,
+            poolId,
+            price,
+            quantity,
+            isBid,
+        });
+
+        if (result.success) {
+            res.json({
+                success: true,
+                message: 'Order recorded successfully',
+                orderId: result.orderId,
+            });
+        } else {
+            res.status(400).json({
+                success: false,
+                error: result.error,
+            });
+        }
+
+    } catch (error) {
+        console.error('❌ Error recording order:', error);
+        res.status(500).json({
+            error: 'Failed to record order',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * API: Manual Record Orders (for adding historical orders)
+ * 
+ * 支持單個訂單或批量訂單
+ * 
+ * 單個訂單示例:
+ * POST /api/orders/manual-record
+ * {
+ *   "orderId": "123456789...",
+ *   "poolId": "0x2281e4164e299193ff...",
+ *   "price": "1000000000",
+ *   "quantity": "100000000000",
+ *   "isBid": false
+ * }
+ * 
+ * 批量訂單示例:
+ * POST /api/orders/manual-record
+ * {
+ *   "orders": [
+ *     { "orderId": "123...", "poolId": "0x228...", "price": "1000000", "isBid": false },
+ *     { "orderId": "456...", "poolId": "0x228...", "price": "2000000", "isBid": true }
+ *   ]
+ * }
+ */
+app.post('/api/orders/manual-record', async (req, res) => {
+    try {
+        const body = req.body;
+        let ordersToRecord = [];
+
+        // 檢查是單個訂單還是批量訂單
+        if (body.orders && Array.isArray(body.orders)) {
+            // 批量訂單
+            ordersToRecord = body.orders;
+        } else if (body.orderId || body.poolId) {
+            // 單個訂單
+            ordersToRecord = [body];
+        } else {
+            return res.status(400).json({
+                error: 'Invalid request format',
+                message: 'Provide either a single order or an array of orders',
+                examples: {
+                    single: { orderId: '...', poolId: '...', price: '...', isBid: false },
+                    batch: { orders: [{ orderId: '...', poolId: '...', price: '...', isBid: false }] }
+                }
+            });
+        }
+
+        console.log(`\n📥 Manual Record Request: ${ordersToRecord.length} order(s)`);
+
+        const results = [];
+        let successCount = 0;
+        let failCount = 0;
+
+        for (const order of ordersToRecord) {
+            const { orderId, poolId, price, quantity, isBid } = order;
+
+            if (!orderId || !poolId || !price) {
+                results.push({
+                    orderId: orderId || 'unknown',
+                    success: false,
+                    error: 'Missing required fields: orderId, poolId, price'
+                });
+                failCount++;
+                continue;
+            }
+
+            try {
+                const result = deepBookListener.recordOrder({
+                    orderId,
+                    poolId,
+                    price,
+                    quantity: quantity || '0',
+                    isBid: isBid !== undefined ? isBid : false,
+                });
+
+                if (result.success) {
+                    results.push({
+                        orderId,
+                        success: true,
+                        message: 'Recorded successfully'
+                    });
+                    successCount++;
+                } else {
+                    results.push({
+                        orderId,
+                        success: false,
+                        error: result.error
+                    });
+                    failCount++;
+                }
+            } catch (err) {
+                results.push({
+                    orderId,
+                    success: false,
+                    error: err.message
+                });
+                failCount++;
+            }
+        }
+
+        console.log(`✅ Manual record completed: ${successCount} success, ${failCount} failed\n`);
+
+        res.json({
+            success: true,
+            message: `Processed ${ordersToRecord.length} order(s)`,
+            summary: {
+                total: ordersToRecord.length,
+                success: successCount,
+                failed: failCount
+            },
+            results
+        });
+
+    } catch (error) {
+        console.error('❌ Error in manual record:', error);
+        res.status(500).json({
+            error: 'Failed to record orders',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * API: Get Cached Orders
+ * 
+ * GET /api/orders/cache
+ * GET /api/orders/cache?poolId=0x228...
+ * GET /api/orders/cache?orderId=123...
+ */
+app.get('/api/orders/cache', (req, res) => {
+    try {
+        const { poolId, orderId } = req.query;
+
+        if (orderId) {
+            // 查詢單個訂單
+            const order = deepBookListener.getCachedOrder(orderId);
+            if (order) {
+                res.json({
+                    success: true,
+                    orderId,
+                    order: {
+                        ...order,
+                        priceDisplay: (order.price / 1_000_000).toFixed(6),
+                    }
+                });
+            } else {
+                res.status(404).json({
+                    success: false,
+                    error: 'Order not found in cache'
+                });
+            }
+        } else {
+            // 獲取所有緩存的訂單
+            const allOrders = [];
+            for (const [id, order] of deepBookListener.orderCache.entries()) {
+                if (!poolId || order.poolId === poolId) {
+                    allOrders.push({
+                        orderId: id,
+                        ...order,
+                        priceDisplay: (order.price / 1_000_000).toFixed(6),
+                    });
+                }
+            }
+
+            res.json({
+                success: true,
+                count: allOrders.length,
+                orders: allOrders,
+                filter: poolId ? { poolId } : 'none'
+            });
+        }
+    } catch (error) {
+        console.error('❌ Error getting cached orders:', error);
+        res.status(500).json({
+            error: 'Failed to get cached orders',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * API: Clean Old Cached Orders
+ * 
+ * POST /api/orders/clean
+ * { "maxAge": 86400000 }  // maxAge in milliseconds (default: 24 hours)
+ */
+app.post('/api/orders/clean', (req, res) => {
+    try {
+        const { maxAge } = req.body;
+        const maxAgeMs = maxAge || 24 * 60 * 60 * 1000; // 預設 24 小時
+
+        const cleaned = deepBookListener.cleanOldOrders(maxAgeMs);
+
+        res.json({
+            success: true,
+            message: `Cleaned ${cleaned} old order(s)`,
+            cleaned,
+            maxAge: maxAgeMs
+        });
+    } catch (error) {
+        console.error('❌ Error cleaning orders:', error);
+        res.status(500).json({
+            error: 'Failed to clean orders',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * API: Get Buyback Execution History
+ * 
+ * GET /api/buyback/history
+ * GET /api/buyback/history?poolId=0x228...
+ */
+app.get('/api/buyback/history', (req, res) => {
+    try {
+        const { poolId } = req.query;
+        
+        let executions = buybackExecutor.getExecutions();
+        
+        // 按 Pool ID 过滤
+        if (poolId) {
+            executions = executions.filter(exec => exec.poolId === poolId);
+        }
+        
+        // 计算总金额
+        const totalAmount = executions.reduce((sum, exec) => sum + (exec.amount || 0), 0);
+        const successCount = executions.filter(exec => exec.status === 'executed').length;
+        
+        res.json({
+            success: true,
+            count: executions.length,
+            successCount,
+            totalAmount,
+            executions: executions.map(exec => ({
+                ...exec,
+                priceDisplay: exec.currentPrice ? (exec.currentPrice / 1_000_000).toFixed(6) : 'N/A',
+                floorPriceDisplay: exec.floorPrice ? (exec.floorPrice / 1_000_000).toFixed(6) : 'N/A',
+            })),
+            filter: poolId ? { poolId } : 'none'
+        });
+    } catch (error) {
+        console.error('❌ Error getting buyback history:', error);
+        res.status(500).json({
+            error: 'Failed to get buyback history',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * API: Get Buyback Stats
+ * 
+ * GET /api/buyback/stats
+ */
+app.get('/api/buyback/stats', (req, res) => {
+    try {
+        const executions = buybackExecutor.getExecutions();
+        
+        const stats = {
+            total: executions.length,
+            executed: executions.filter(e => e.status === 'executed').length,
+            failed: executions.filter(e => e.status === 'failed').length,
+            simulated: executions.filter(e => e.status === 'simulated').length,
+            totalAmount: executions.reduce((sum, e) => sum + (e.amount || 0), 0),
+            enabled: buybackExecutor.enabled,
+            balanceManager: buybackExecutor.balanceManagerId,
+        };
+        
+        res.json({
+            success: true,
+            stats
+        });
+    } catch (error) {
+        console.error('❌ Error getting buyback stats:', error);
+        res.status(500).json({
+            error: 'Failed to get buyback stats',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * API: Get Registered Pool Info
+ * 
+ * GET /api/pools/:poolId
+ */
+app.get('/api/pools/:poolId', (req, res) => {
+    try {
+        const { poolId } = req.params;
+        
+        const poolInfo = vaultRegistry.getVaultByPoolId(poolId);
+        
+        if (!poolInfo) {
+            return res.status(404).json({
+                success: false,
+                error: 'Pool not found',
+                message: 'This pool has not been registered'
+            });
+        }
+        
+        res.json({
+            success: true,
+            pool: {
+                poolId: poolInfo.poolId,
+                vaultId: poolInfo.vaultId,
+                balanceManagerId: poolInfo.balanceManagerId,
+                coinType: poolInfo.coinType,
+                floorPrice: poolInfo.floorPrice,
+                floorPriceDisplay: (poolInfo.floorPrice / 1_000_000).toFixed(6) + ' USDC',
+                owner: poolInfo.owner,
+                lastTradePrice: poolInfo.lastTradePrice,
+                buybackCount: poolInfo.buybackCount,
+                totalBuybackAmount: poolInfo.totalBuybackAmount,
+                registeredAt: poolInfo.registeredAt,
+            }
+        });
+    } catch (error) {
+        console.error('❌ Error getting pool info:', error);
+        res.status(500).json({
+            error: 'Failed to get pool info',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * API: Get All Registered Pools
+ * 
+ * GET /api/pools
+ */
+app.get('/api/pools', (req, res) => {
+    try {
+        const allPools = vaultRegistry.getAllPools();
+        
+        res.json({
+            success: true,
+            count: allPools.length,
+            pools: allPools.map(pool => ({
+                poolId: pool.poolId,
+                vaultId: pool.vaultId,
+                balanceManagerId: pool.balanceManagerId,
+                coinType: pool.coinType,
+                floorPriceDisplay: (pool.floorPrice / 1_000_000).toFixed(6) + ' USDC',
+                buybackCount: pool.buybackCount,
+                registeredAt: pool.registeredAt,
+            }))
+        });
+    } catch (error) {
+        console.error('❌ Error getting pools:', error);
+        res.status(500).json({
+            error: 'Failed to get pools',
             message: error.message
         });
     }
@@ -701,30 +1132,105 @@ app.post('/api/deepbook/listener/stop', (req, res) => {
     }
 });
 
+
 /**
  * API: Manually add Pool to listener
+ * 
+ * Request body:
+ * - poolId (required): DeepBook Pool ID
+ * - vaultId (required for buyback): Associated Vault ID
+ * - balanceManagerId (required for buyback): Balance Manager ID for executing buyback
+ * - coinType (optional): Base coin type (will be queried from chain if not provided)
+ * - floorPrice (optional): Floor price in USDC (default: 1.0)
+ * - minBuybackAmount (optional): Minimum buyback amount in USDC (default: 0, no limit)
+ * - owner (optional): Vault owner address
  */
 app.post('/api/deepbook/listener/add-pool', async (req, res) => {
     try {
-        const { poolId, balanceManagerId, vaultId, coinType, floorPrice } = req.body;
+        const { poolId, balanceManagerId, vaultId, coinType, floorPrice, minBuybackAmount, owner } = req.body;
 
         if (!poolId) {
             return res.status(400).json({ error: 'Missing poolId' });
         }
 
+        // 轉換 floorPrice 到 6 位小數
+        const floorPriceRaw = floorPrice ? Math.floor(parseFloat(floorPrice) * 1_000_000) : 1_000_000;
+        const floorPriceDisplay = (floorPriceRaw / 1_000_000).toFixed(6);
+
+        console.log('\n🏊 ====== Adding Pool to Listener ======');
+        console.log(`📋 Pool ID: ${poolId}`);
+        console.log(`🏦 Vault ID: ${vaultId || '⚠️  NOT PROVIDED'}`);
+        console.log(`💼 Balance Manager ID: ${balanceManagerId || '⚠️  NOT PROVIDED'}`);
+        console.log(`🪙 Coin Type: ${coinType || 'Will query from chain'}`);
+        console.log(`🛡️  Floor Price: ${floorPriceDisplay} USDC`);
+        console.log(`💰 Min Buyback Amount: ${minBuybackAmount !== undefined ? minBuybackAmount + ' USDC' : 'Not set (no limit)'}`);
+        console.log(`👤 Owner: ${owner || 'N/A'}`);
+
+        // 檢查：如果要啟用自動回購，必須提供 vaultId 和 balanceManagerId
+        const canBuyback = vaultId && balanceManagerId;
+        if (!canBuyback) {
+            console.log('\n⚠️  Warning: Missing vaultId or balanceManagerId');
+            console.log('   Automatic buyback will NOT be available for this pool');
+            console.log('   Pool will be monitored but buyback cannot be executed');
+        }
+
+        console.log('========================================\n');
+
+        // 步驟 1: 添加到 listener (用於監聽事件)
         const poolConfig = await deepBookListener.addManualPool(poolId, {
             balanceManagerId,
             vaultId,
             coinType,
-            floorPrice: floorPrice ? Math.floor(parseFloat(floorPrice) * 1_000_000) : 1_000_000,
+            floorPrice: floorPriceRaw,
+            owner,
         });
+
+        // 步驟 2: 如果提供了完整信息，註冊到 vaultRegistry (用於回購觸發)
+        let registeredToVault = false;
+        if (vaultId) {
+            vaultRegistry.registerPool(poolId, {
+                vaultId,
+                balanceManagerId: balanceManagerId || null,
+                coinType: poolConfig.coinType, // 使用從鏈上查詢的 coinType（如果有）
+                floorPrice: floorPriceRaw,
+                minBuybackAmount: minBuybackAmount !== undefined ? parseFloat(minBuybackAmount) : undefined,
+                owner,
+            });
+            registeredToVault = true;
+            
+            console.log('✅ Pool added to listener and registered in vault registry');
+            console.log(`   Buyback ${canBuyback ? 'ENABLED' : 'DISABLED (missing balanceManagerId)'}`);
+        } else {
+            console.log('✅ Pool added to listener only (no vault registration)');
+            console.log('   ℹ️  To enable buyback, provide vaultId and balanceManagerId');
+        }
 
         res.json({
             success: true,
-            message: 'Pool added to monitoring',
-            data: poolConfig,
+            message: registeredToVault 
+                ? (canBuyback ? 'Pool registered with buyback enabled' : 'Pool registered but buyback disabled (missing balanceManagerId)')
+                : 'Pool added to monitoring only',
+            data: {
+                poolId: poolConfig.poolId,
+                vaultId: poolConfig.vaultId,
+                balanceManagerId: poolConfig.balanceManagerId,
+                coinType: poolConfig.coinType,
+                quoteCoin: poolConfig.quoteCoin,
+                floorPrice: floorPriceRaw,
+                floorPriceDisplay: floorPriceDisplay + ' USDC',
+                minBuybackAmount: minBuybackAmount !== undefined ? parseFloat(minBuybackAmount) : null,
+                owner: poolConfig.owner,
+                registeredToVault,
+                buybackEnabled: canBuyback,
+                addedAt: poolConfig.addedAt,
+            },
+            warnings: !canBuyback ? [
+                'Missing vaultId or balanceManagerId - automatic buyback is disabled',
+                'Provide both vaultId and balanceManagerId to enable buyback functionality'
+            ] : [],
         });
     } catch (error) {
+        console.error('❌ Error adding pool:', error);
         res.status(500).json({ error: error.message });
     }
 });

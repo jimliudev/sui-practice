@@ -251,8 +251,26 @@ const result = await client.signAndExecuteTransaction({
 4. **Gas 費用**: 確保錢包有足夠的 SUI 支付 gas
 5. **DEEP 代幣**: 建議持有一些 DEEP 代幣來支付交易費用
 
+# Sucessful Record
 
-# 117
+### test_sucess_01
+f_token = 1000 * 1000000 = 1000顆
+100000 * 1000000 f_token / USDC -> 0.0001 USDC get 1 f_token
+0.1 USDC = 1000顆 f_token
+
+tick size:0.001
+lot size:0.1 最小交易量0.1 token
+min size:1 可以一個token
+地板價：0.001
+
+可能不能剛好全sell
+100 TEST02042 @ 0.001 USDC
+
+### test_sucess_02
+
+### Create Pool
+
+```c#
 npm run create-pool -- \
   --base TEST01_COIN \
   --quote DBUSDC \
@@ -260,8 +278,9 @@ npm run create-pool -- \
   --tickSize 0.001 \
   --lotSize 0.1 \
   --minSize 1
+```
 
-  ### sucess
+#### sucess
 
   ```text
   Network: testnet
@@ -301,12 +320,14 @@ npm run create-pool -- \
 ✨ Done!
   ```
 
-查詢特定pool
-  npm run query-pools -- 0x9c73295c437151ee5ded33df815faebd1e7b13d794af60feda201a226ad680d6
+### 查詢特定pool
+npm run query-pools -- 0x9c73295c437151ee5ded33df815faebd1e7b13d794af60feda201a226ad680d6
 
-增加流通性
-  npm run deposit -- --coin TEST01_COIN --amount 100
+### 增加流通性
 
+npm run deposit -- --coin TEST01_COIN --amount 100
+
+### 使用swap
 sui - bdusd
   npm run swap -- \
   --pool SUI_DBUSDC \
@@ -314,26 +335,58 @@ sui - bdusd
   --direction base-to-quote
 
 
-  # 更多賣單
+### 更多賣單
 npm run place-limit-order -- --pool TEST01_COIN_DBUSDC --price 1.5 --quantity 5 --side sell
 npm run place-limit-order -- --pool TEST01_COIN_DBUSDC --price 1.8 --quantity 15 --side sell
 
-# 買單（需要 DBUSDC）
+### 買單（需要 DBUSDC）
 npm run place-limit-order -- --pool TEST01_COIN_DBUSDC --price 1.6 --quantity 2 --side buy
 
 
-# 訂單
+### 訂單查詢
 npm run query-orders -- TEST01_COIN_DBUSDC book
+
+npm run query-orders -- 0x9c73295c437151ee5ded33df815faebd1e7b13d794af60feda201a226ad680d6 book
 
 npx tsx src/queryOpenOrdersSDK.ts
 npx tsx src/queryRecentTx.ts
 
-# 領錢出來
-# 查看使用說明
+### 領錢出來
+查看使用說明
 npm run withdraw
-# 提取 DBUSDC
+
+#### 提取 DBUSDC
 npm run withdraw -- --coin DBUSDC --amount 10
-# 提取 TEST01_COIN
+
+##### 提取 TEST01_COIN
 npm run withdraw -- --coin TEST01_COIN --amount 50
-# 提取 SUI
+
+#### 提取 SUI
 npm run withdraw -- --coin SUI --amount 5
+
+
+### backend add pool
+
+curl -X POST http://localhost:3000/api/deepbook/listener/add-pool \
+  -H "Content-Type: application/json" \
+  -d '{
+    "poolId": "0x2281e4164e299193fff040bb7e3a8e168cea3973adedfdfbd0ee95b96af722a3",
+    "vaultId": "0x7af94521daa033f5e3a1bb9b99849beb68158e5818356e080d3cff78afbd28fd",
+    "balanceManagerId": "0x2dad7c896a8b875969708eeb77cb0312f6c5cbdaa40c2befb7b7b5500400efdd",
+    "minBuybackAmount": 0.001,
+    "floorPrice": 0.01    
+  }'
+
+curl -X POST http://localhost:3000/api/orders/manual-record \
+  -H "Content-Type: application/json" \
+  -d '{
+    "orders": [
+      {
+        "orderId": "170141183460487678475761013267500105732",
+        "poolId": "0x2281e4164e299193fff040bb7e3a8e168cea3973adedfdfbd0ee95b96af722a3",  
+        "price": "1000000",
+        "quantity": "100000000000",
+        "isBid": false
+      }
+    ]
+  }'

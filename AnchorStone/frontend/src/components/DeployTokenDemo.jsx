@@ -15,6 +15,7 @@ export default function DeployTokenDemo() {
         propertyId: `prop_${Date.now()}`,
         name: '',
         description: '',
+        symbol: '',  // 自定義 token symbol
     })
 
     const handleDeploy = async (e) => {
@@ -77,6 +78,23 @@ export default function DeployTokenDemo() {
                         style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
                         required
                     />
+                </div>
+
+                <div style={{ marginBottom: '15px' }}>
+                    <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
+                        Token Symbol
+                    </label>
+                    <input
+                        type="text"
+                        value={formData.symbol}
+                        onChange={(e) => setFormData({ ...formData, symbol: e.target.value.toUpperCase() })}
+                        placeholder="e.g., ROOF"
+                        maxLength="10"
+                        style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+                    />
+                    <small style={{ color: '#666', fontSize: '12px' }}>
+                        短名稱（選填，最多 10 字元）。如 ROOF、HOUSE 等。留空將從名稱自動生成。
+                    </small>
                 </div>
 
                 <div style={{ marginBottom: '15px' }}>

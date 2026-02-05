@@ -48,7 +48,7 @@ export default function TokenVaultWizard() {
         totalFragments: 1,          // User inputs whole tokens (will multiply by 1M)
         // DeepBook integration
         initialPrice: 5.0,          // USDC per token
-        floorPrice: 1.0,            // USDC per token
+        floorPrice: null,           // ⚠️ USDC per token - 必須由用戶設定
         usdcCollateral: 1.0,        // USDC
     })
 
@@ -110,6 +110,7 @@ export default function TokenVaultWizard() {
                     propertyId: results.nftId,
                     name: formData.propertyName,
                     description: formData.description,
+                    symbol: formData.tokenSymbol,  // 傳遞自定義 symbol
                 },
                 currentAccount.address,
                 signTransaction
@@ -133,6 +134,19 @@ export default function TokenVaultWizard() {
         setError(null)
 
         try {
+            // ✅ 驗證必填欄位
+            if (!formData.floorPrice || formData.floorPrice <= 0) {
+                throw new Error('❌ 請設定 Floor Price（最低回購價格）！這是必填項目。')
+            }
+            
+            if (!formData.initialPrice || formData.initialPrice <= 0) {
+                throw new Error('❌ 請設定 Initial Price（起始價格）！這是必填項目。')
+            }
+            
+            if (formData.floorPrice > formData.initialPrice) {
+                throw new Error('❌ Floor Price 不能高於 Initial Price！')
+            }
+
             // Convert user input to smallest units (6 decimals)
             const totalTokenSupply = formData.totalFragments * 1_000_000  // User inputs whole tokens
             const usdcCollateralAmount = Math.floor(formData.usdcCollateral * 1_000_000)
@@ -204,12 +218,14 @@ export default function TokenVaultWizard() {
         setMintResult(null)
 
         try {
-            const amount = formData.totalFragments
+            // Convert user input to smallest units (6 decimals)
+            const amount = formData.totalFragments * 1_000_000  // User inputs whole tokens
 
             console.log('Minting tokens:')
             console.log('- Vault ID:', results.vaultId)
             console.log('- Token Type:', results.tokenType)
-            console.log('- Amount:', amount)
+            console.log('- Amount (user input):', formData.totalFragments, 'tokens')
+            console.log('- Amount (smallest unit):', amount)
 
             const tx = new Transaction()
 
@@ -232,7 +248,7 @@ export default function TokenVaultWizard() {
             console.log('Mint result:', txResult)
 
             setMintResult({
-                amount: amount,
+                amount: formData.totalFragments,  // Store the user-friendly amount
                 digest: txResult.digest,
             })
         } catch (err) {
@@ -255,7 +271,7 @@ export default function TokenVaultWizard() {
             tokenSymbol: '',
             totalFragments: 1,
             initialPrice: 5.0,
-            floorPrice: 1.0,
+            floorPrice: null,  // ✅ 不提供默認值
             usdcCollateral: 1.0,
         })
         setResults({
@@ -340,6 +356,20 @@ export default function TokenVaultWizard() {
                             />
                         </div>
                         <div>
+                            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Token 符號（選填）</label>
+                            <input
+                                type="text"
+                                value={formData.tokenSymbol}
+                                onChange={(e) => handleInputChange('tokenSymbol', e.target.value.toUpperCase())}
+                                placeholder="例：ROOF、HOUSE（最多 10 字元）"
+                                maxLength="10"
+                                style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd' }}
+                            />
+                            <small style={{ color: '#666', fontSize: '12px' }}>
+                                代幣的短名稱，用於模組命名。留空將從物業名稱自動生成。
+                            </small>
+                        </div>
+                        <div>
                             <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>描述</label>
                             <textarea
                                 value={formData.description}
@@ -397,14 +427,30 @@ export default function TokenVaultWizard() {
                                         />
                                     </div>
                                     <div>
-                                        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', color: '#333' }}>最低回購價（USDC/token）</label>
+                                        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', color: '#d9534f' }}>
+                                            最低回購價（USDC/token）<span style={{ color: 'red' }}> *必填</span>
+                                        </label>
                                         <input
                                             type="number"
                                             step="0.01"
-                                            value={formData.floorPrice}
+                                            min="0.001"
+                                            value={formData.floorPrice || ''}
                                             onChange={(e) => handleInputChange('floorPrice', Number(e.target.value))}
-                                            style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd' }}
+                                            placeholder="請輸入最低回購價"
+                                            required
+                                            style={{ 
+                                                width: '100%', 
+                                                padding: '10px', 
+                                                borderRadius: '6px', 
+                                                border: !formData.floorPrice || formData.floorPrice <= 0 ? '2px solid #d9534f' : '1px solid #28a745',
+                                                backgroundColor: !formData.floorPrice || formData.floorPrice <= 0 ? '#fff3cd' : 'white'
+                                            }}
                                         />
+                                        {(!formData.floorPrice || formData.floorPrice <= 0) && (
+                                            <small style={{ color: '#d9534f', fontWeight: 'bold' }}>
+                                                ⚠️ 必須設定
+                                            </small>
+                                        )}
                                     </div>
                                 </div>
 
@@ -418,13 +464,19 @@ export default function TokenVaultWizard() {
                                         style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd' }}
                                     />
                                     <small style={{ color: '#555', fontWeight: '600' }}>
-                                        最低需要：{(formData.totalFragments * formData.floorPrice).toFixed(2)} USDC
+                                        最低需要：{formData.floorPrice ? (formData.totalFragments * formData.floorPrice).toFixed(2) : '請先設定 Floor Price'} USDC
                                     </small>
                                 </div>
 
-                                {formData.usdcCollateral < (formData.totalFragments * formData.floorPrice) && (
+                                {formData.floorPrice && formData.usdcCollateral < (formData.totalFragments * formData.floorPrice) && (
                                     <div style={{ padding: '10px', background: '#fff3cd', borderRadius: '6px', color: '#856404', border: '1px solid #ffc107' }}>
                                         ⚠️ 質押不足！無法在最低價格回購所有 token
+                                    </div>
+                                )}
+                                
+                                {!formData.floorPrice && (
+                                    <div style={{ padding: '10px', background: '#f8d7da', borderRadius: '6px', color: '#721c24', border: '1px solid #f5c6cb' }}>
+                                        ❌ 請先設定最低回購價
                                     </div>
                                 )}
                             </div>
@@ -580,8 +632,8 @@ export default function TokenVaultWizard() {
                         </p>
 
                         <div style={{ marginTop: '15px', padding: '15px', background: '#e9ecef', borderRadius: '8px' }}>
-                            <div><strong>將 Mint 數量：</strong> {formData.totalFragments.toLocaleString()} 代幣（最小單位）</div>
-                            <div style={{ color: '#666', fontSize: '13px' }}>= {(formData.totalFragments / 1000000).toLocaleString()} 代幣（6 位小數）</div>
+                            <div><strong>將 Mint 數量：</strong> {formData.totalFragments.toLocaleString()} 代幣</div>
+                            <div style={{ color: '#666', fontSize: '13px' }}>= {(formData.totalFragments * 1_000_000).toLocaleString()} 鏈上單位（6 位小數）</div>
                         </div>
 
                         <button
