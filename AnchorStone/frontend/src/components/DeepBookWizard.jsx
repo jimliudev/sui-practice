@@ -609,55 +609,98 @@ export default function DeepBookWizard({
         }
     }, [currentStep, poolId, balanceManagerId])
 
-    // Step 6.1: 創建 Balance Manager (直接 Move 調用)
+    // Step 6.1: 創建 Balance Manager (通過後端) 並存入 USDC (用戶錢包)
     const handleCreateBalanceManager = async () => {
         setIsProcessing(true)
         setError(null)
 
         try {
-            console.log('Creating Balance Manager via Move call...')
-
-            const tx = new Transaction()
-
-            // 調用 balance_manager::new 創建 BalanceManager
-            const [balanceManager] = tx.moveCall({
-                target: `0x${DEEPBOOK_PACKAGE_ID}::balance_manager::new`,
-                arguments: [],
-            })
-
-            // BalanceManager 必須是 shared object
-            tx.moveCall({
-                target: '0x2::transfer::public_share_object',
-                typeArguments: [`0x${DEEPBOOK_PACKAGE_ID}::balance_manager::BalanceManager`],
-                arguments: [balanceManager],
-            })
-
-            const result = await signAndExecuteTransaction({
-                transaction: tx,
-            }, {
-                onSuccess: (data) => console.log('Transaction success:', data),
-            })
-
-            // 等待交易確認並獲取完整結果
-            const fullResult = await suiClient.waitForTransaction({
-                digest: result.digest,
-                options: { showObjectChanges: true },
-            })
-
-            console.log('Balance Manager creation result:', result)
-
-            const managerId = extractObjectId(fullResult, 'BalanceManager')
-
-            if (!managerId) {
-                throw new Error('Failed to find Balance Manager ID in transaction result')
+            if (!currentAccount?.address) {
+                throw new Error('請先連接錢包')
             }
 
-            console.log('✅ Balance Manager ID:', managerId)
+            // ===== Step 1: 通過後端創建 Balance Manager =====
+            console.log('Step 1: Creating Balance Manager via backend API...')
+
+            const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000'
+            const response = await fetch(`${backendUrl}/api/deepbook/create-balance-manager`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    userAddress: currentAccount.address,
+                }),
+            })
+
+            if (!response.ok) {
+                const errorData = await response.json()
+                throw new Error(errorData.message || errorData.error || 'Failed to create Balance Manager')
+            }
+
+            const result = await response.json()
+            const managerId = result.data.balanceManagerId
+
+            console.log('✅ Balance Manager created:', managerId)
+            console.log('   Digest:', result.data.digest)
+
             setBalanceManagerId(managerId)
+
+            // ===== Step 2: 存入用戶的 USDC =====
+            const usdcAmount = formData.depositUsdc || 0
+
+            if (usdcAmount > 0) {
+                console.log(`Step 2: Depositing ${usdcAmount} USDC from user wallet...`)
+
+                // 轉換為 6 decimals
+                const amountRaw = Math.floor(parseFloat(usdcAmount) * 1_000_000)
+
+                // 獲取用戶的 USDC coins
+                const usdcCoins = await suiClient.getCoins({
+                    owner: currentAccount.address,
+                    coinType: RESERVE_COIN_TYPE,
+                })
+
+                if (!usdcCoins.data || usdcCoins.data.length === 0) {
+                    console.warn('⚠️  User has no USDC coins, skipping deposit')
+                    setCurrentStep(2)
+                    return
+                }
+
+                // 構建存款交易
+                const depositTx = new Transaction()
+
+                // Split 出需要的 USDC 金額
+                const [depositCoin] = depositTx.splitCoins(
+                    depositTx.object(usdcCoins.data[0].coinObjectId),
+                    [depositTx.pure.u64(amountRaw)]
+                )
+
+                // 調用 balance_manager::deposit
+                depositTx.moveCall({
+                    target: `0x${DEEPBOOK_PACKAGE_ID}::balance_manager::deposit`,
+                    typeArguments: [RESERVE_COIN_TYPE],
+                    arguments: [
+                        depositTx.object(managerId),
+                        depositCoin,
+                    ],
+                })
+
+                // 執行存款交易
+                const depositResult = await signAndExecuteTransaction({
+                    transaction: depositTx,
+                })
+
+                console.log('✅ USDC deposited:', depositResult.digest)
+                console.log(`   Amount: ${usdcAmount} USDC`)
+            } else {
+                console.log('⚠️  No USDC amount specified, skipping deposit')
+            }
+
             setCurrentStep(2)
 
         } catch (err) {
-            console.error('Create Balance Manager error:', err)
+            console.error('❌ Create Balance Manager error:', err)
             setError(err.message)
         } finally {
             setIsProcessing(false)
@@ -1323,9 +1366,9 @@ export default function DeepBookWizard({
             {/* Step 6.1: Create Balance Manager */}
             {currentStep === 1 && (
                 <div>
-                    <h3 style={{ color: '#000' }}>📦 創建 Balance Manager</h3>
+                    <h3 style={{ color: '#000' }}>📦 創建 Balance Manager 並存入 USDC</h3>
                     <p style={{ color: '#333', marginBottom: '20px' }}>
-                        Balance Manager 用於管理您在 DeepBook 上的所有資金。
+                        Balance Manager 用於管理您在 DeepBook 上的所有資金。創建後可立即存入 USDC。
                     </p>
 
                     <div style={{ padding: '15px', background: '#e7f3ff', border: '2px solid #0066ff', borderRadius: '8px', marginBottom: '20px' }}>
@@ -1334,7 +1377,32 @@ export default function DeepBookWizard({
                             <li>Balance Manager 是 shared object</li>
                             <li>一個 Balance Manager 可在所有池子中使用</li>
                             <li>創建後會自動分享給所有人</li>
+                            <li>💰 創建後立即從您的錢包存入 USDC</li>
                         </ul>
+                    </div>
+
+                    {/* USDC 存款金額輸入 */}
+                    <div style={{ marginBottom: '20px', padding: '15px', background: '#fff', border: '1px solid #ddd', borderRadius: '8px' }}>
+                        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', color: '#333' }}>
+                            💵 USDC 存入數量（選填）
+                        </label>
+                        <input
+                            type="number"
+                            step="1"
+                            min="0"
+                            value={formData.depositUsdc}
+                            onChange={(e) => handleInputChange('depositUsdc', parseFloat(e.target.value) || 0)}
+                            style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd' }}
+                            placeholder="例如：10"
+                        />
+                        <small style={{ color: '#555' }}>
+                            用於買入代幣或掛買單。將從您的錢包存入。
+                            {formData.depositUsdc > 0 && (
+                                <span style={{ color: '#007bff', marginLeft: '8px' }}>
+                                    （鏈上：{(formData.depositUsdc * 1_000_000).toLocaleString()} 單位）
+                                </span>
+                            )}
+                        </small>
                     </div>
 
                     <button
@@ -1351,7 +1419,7 @@ export default function DeepBookWizard({
                             fontWeight: 'bold',
                         }}
                     >
-                        {isProcessing ? '處理中...' : '創建 Balance Manager'}
+                        {isProcessing ? '處理中...' : formData.depositUsdc > 0 ? `創建並存入 ${formData.depositUsdc} USDC` : '創建 Balance Manager'}
                     </button>
 
                     {/* 測試用輸入框 - 手動輸入已有的 ID */}

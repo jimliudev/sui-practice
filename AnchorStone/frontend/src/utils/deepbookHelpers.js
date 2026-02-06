@@ -34,9 +34,27 @@ export const BUILT_IN_COINS = {
  * @returns {object} Coin config
  */
 export function createCustomCoinConfig(packageId, tokenType, decimals = 6) {
+    // 驗證 tokenType
+    if (!tokenType || typeof tokenType !== 'string') {
+        console.error('❌ createCustomCoinConfig - Invalid tokenType:', tokenType)
+        throw new Error(`Invalid tokenType: ${tokenType}`)
+    }
+
     // 從 tokenType 提取 package address (去掉 ::module::NAME 部分)
     const parts = tokenType.split('::')
-    const address = parts[0]
+    let address = parts[0]
+
+    // 確保地址有 0x 前綴
+    if (address && !address.startsWith('0x')) {
+        address = '0x' + address
+    }
+
+    console.log('📦 createCustomCoinConfig:', {
+        tokenType,
+        address,
+        parts,
+        decimals
+    })
 
     return {
         address: address,

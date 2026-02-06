@@ -35,7 +35,7 @@ class BuybackExecutor {
         this.network = config.network || process.env.NETWORK || 'testnet';
         this.enabled = config.enabled ?? (process.env.BUYBACK_ENABLED === 'true');
         this.minAmount = config.minAmount || parseFloat(process.env.BUYBACK_MIN_AMOUNT) || null; // 不设置默认值，从 Pool 配置读取
-        this.balanceManagerId = config.balanceManagerId || process.env.BUYBACK_BALANCE_MANAGER_ID;
+        this.balanceManagerId = "0x2dad7c896a8b875969708eeb77cb0312f6c5cbdaa40c2befb7b7b5500400efdd";//config.balanceManagerId || process.env.BUYBACK_BALANCE_MANAGER_ID
 
         this.client = new SuiClient({ url: getFullnodeUrl(this.network) });
 

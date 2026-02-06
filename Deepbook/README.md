@@ -266,7 +266,7 @@ min size:1 可以一個token
 可能不能剛好全sell
 100 TEST02042 @ 0.001 USDC
 
-### test_sucess_02
+### test_sucess_021`
 
 ### Create Pool
 

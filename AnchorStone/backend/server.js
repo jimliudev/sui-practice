@@ -2,6 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import { SuiClient, getFullnodeUrl } from '@mysten/sui/client';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
+import { Transaction } from '@mysten/sui/transactions';
 import { onboardNewProperty } from './deployProperty.js';
 import vaultRegistry from './vaultRegistry.js';
 import deepBookListener from './deepbookListener.js';
@@ -1132,6 +1133,117 @@ app.post('/api/deepbook/listener/stop', (req, res) => {
     }
 });
 
+
+/**
+ * API: Create Balance Manager
+ * 
+ * Creates a DeepBook Balance Manager for the user
+ * Returns the Balance Manager ID
+ */
+app.post('/api/deepbook/create-balance-manager', async (req, res) => {
+    try {
+        const { userAddress } = req.body;
+
+        if (!userAddress) {
+            return res.status(400).json({ error: 'Missing userAddress' });
+        }
+
+        console.log('\n💼 ====== Creating Balance Manager ======');
+        console.log(`👤 User Address: ${userAddress}`);
+
+        // 初始化 Sui Client
+        const network = process.env.NETWORK || 'testnet';
+        const rpcUrl = network === 'mainnet' 
+            ? 'https://fullnode.mainnet.sui.io:443'
+            : 'https://fullnode.testnet.sui.io:443';
+        
+        const backendSuiClient = new SuiClient({ url: rpcUrl });
+
+        // 使用后端密钥签名（用于支付 gas）
+        const privateKey = process.env.SUI_PRIVATE_KEY;
+        if (!privateKey) {
+            throw new Error('SUI_PRIVATE_KEY not configured in .env');
+        }
+
+        // Support both Bech32 (suiprivkey1...) and hex formats
+        let keypair;
+        if (privateKey.startsWith('suiprivkey')) {
+            keypair = Ed25519Keypair.fromSecretKey(privateKey);
+        } else {
+            keypair = Ed25519Keypair.fromSecretKey(Buffer.from(privateKey.replace('0x', ''), 'hex'));
+        }
+
+        console.log('🔑 Using backend keypair for gas payment');
+
+        // 构建交易
+        const tx = new Transaction();
+
+        // DeepBook Package ID (Testnet)
+        const DEEPBOOK_PACKAGE_ID = 'fb28c4cbc6865bd1c897d26aecbe1f8792d1509a20ffec692c800660cbec6982';
+
+        // 调用 balance_manager::new 创建 BalanceManager
+        const [balanceManager] = tx.moveCall({
+            target: `0x${DEEPBOOK_PACKAGE_ID}::balance_manager::new`,
+            arguments: [],
+        });
+
+        // BalanceManager 必须是 shared object
+        tx.moveCall({
+            target: '0x2::transfer::public_share_object',
+            typeArguments: [`0x${DEEPBOOK_PACKAGE_ID}::balance_manager::BalanceManager`],
+            arguments: [balanceManager],
+        });
+
+        // 执行交易
+        console.log('📝 Executing transaction...');
+        const result = await backendSuiClient.signAndExecuteTransaction({
+            transaction: tx,
+            signer: keypair,
+            options: {
+                showObjectChanges: true,
+                showEffects: true,
+            },
+        });
+
+        console.log('✅ Transaction executed:', result.digest);
+
+        // 提取 Balance Manager ID
+        let balanceManagerId = null;
+        if (result.objectChanges) {
+            for (const change of result.objectChanges) {
+                if (change.type === 'created' && 
+                    change.objectType?.includes('BalanceManager')) {
+                    balanceManagerId = change.objectId;
+                    break;
+                }
+            }
+        }
+
+        if (!balanceManagerId) {
+            throw new Error('Failed to extract Balance Manager ID from transaction');
+        }
+
+        console.log('✅ Balance Manager ID:', balanceManagerId);
+        console.log('========================================\n');
+
+        res.json({
+            success: true,
+            message: 'Balance Manager created successfully',
+            data: {
+                balanceManagerId,
+                digest: result.digest,
+                explorerUrl: `https://${network === 'mainnet' ? '' : 'testnet.'}suivision.xyz/txblock/${result.digest}`,
+            },
+        });
+
+    } catch (error) {
+        console.error('❌ Error creating Balance Manager:', error);
+        res.status(500).json({
+            error: 'Failed to create Balance Manager',
+            message: error.message,
+        });
+    }
+});
 
 /**
  * API: Manually add Pool to listener
